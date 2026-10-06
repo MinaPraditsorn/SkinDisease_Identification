@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skin Disease Identification</title>
+<meta name="description" content="โมเดล KNN จำแนกผื่น 3 ชนิด: ผดผื่นร้อน อีสุกอีใส และมือเท้าปาก จากลักษณะที่เห็นในรูป">
+<meta property="og:title" content="Skin Disease Identification">
+<meta property="og:description" content="โมเดล KNN จำแนกผื่น 3 ชนิด: ผดผื่นร้อน อีสุกอีใส และมือเท้าปาก จากลักษณะที่เห็นในรูป">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://minapraditsorn.github.io/SkinDiseaseIdentification/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: clinical worksheet — checklist on the left, the model's verdict and its 5 voting neighbours on the right, test-set bench below */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --ink:#1b2a30; --muted:#5b6b72; --line:#d9e1e4; --soft:#e9eef0;
+  --accent:#0f6e74; --accent-ink:#ffffff;
+  --c-heat:#c27a12; --c-heat-bg:#fbf0dd;
+  --c-pox:#c23d5a; --c-pox-bg:#fbe5ea;
+  --c-hfmd:#4b5fc4; --c-hfmd-bg:#e6e9fa;
+  --warn:#9a5b00; --warn-bg:#fff4dc; --ok:#1d7a4a;
+  --f-display:"Bai Jamjuree","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11181b; --surface:#182226; --ink:#e4ecee; --muted:#93a4ab; --line:#2a383d; --soft:#1f2b30;
+  --accent:#4fb8bd; --accent-ink:#0b1416;
+  --c-heat:#e8a54a; --c-heat-bg:#3a2a12; --c-pox:#ef7d95; --c-pox-bg:#3d1c25; --c-hfmd:#94a3f2; --c-hfmd-bg:#232a4d;
+  --warn:#f2bf5e; --warn-bg:#352a12; --ok:#5fcf93; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11181b; --surface:#182226; --ink:#e4ecee; --muted:#93a4ab; --line:#2a383d; --soft:#1f2b30;
+  --accent:#4fb8bd; --accent-ink:#0b1416;
+  --c-heat:#e8a54a; --c-heat-bg:#3a2a12; --c-pox:#ef7d95; --c-pox-bg:#3d1c25; --c-hfmd:#94a3f2; --c-hfmd-bg:#232a4d;
+  --warn:#f2bf5e; --warn-bg:#352a12; --ok:#5fcf93; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:grid;gap:24px}
+header{display:grid;gap:6px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,4vw,36px);line-height:1.2;margin:0;text-wrap:balance}
+h2{font-family:var(--f-display);font-weight:600;font-size:19px;margin:0}
+h3{font-family:var(--f-display);font-weight:600;font-size:14px;margin:0;color:var(--muted);letter-spacing:.02em}
+.lede{color:var(--muted);margin:0;max-width:68ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:grid;gap:16px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.group{display:grid;gap:8px}
+.feat{display:flex;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;user-select:none;transition:background .12s,border-color .12s}
+.feat:hover{border-color:var(--accent)}
+.feat input{appearance:none;width:20px;height:20px;flex:none;border:1.5px solid var(--muted);border-radius:5px;display:grid;place-content:center;margin:0;background:var(--surface)}
+.feat input::after{content:"";width:10px;height:6px;border-left:2px solid var(--accent-ink);border-bottom:2px solid var(--accent-ink);transform:rotate(-45deg) translate(1px,-1px);opacity:0}
+.feat input:checked{background:var(--accent);border-color:var(--accent)}
+.feat input:checked::after{opacity:1}
+.feat input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.feat:has(input:checked){background:var(--soft);border-color:var(--accent)}
+.feat .num{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:auto}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.primary:hover{color:var(--accent-ink);filter:brightness(1.08)}
+.verdict{display:grid;gap:10px;padding:18px;border-radius:10px;background:var(--vbg,var(--soft));border:1px solid var(--vfg,var(--line))}
+.verdict .label{font-size:13px;color:var(--muted)}
+.verdict .name{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,4vw,34px);line-height:1.15;color:var(--vfg,var(--ink))}
+.votes{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dot{width:26px;height:26px;border-radius:50%;display:grid;place-content:center;font-family:var(--f-mono);font-size:11px;color:#fff;font-weight:500}
+.tally{display:grid;gap:6px}
+.bar{display:grid;grid-template-columns:120px minmax(0,1fr) 34px;gap:10px;align-items:center;font-size:13px}
+.track{height:8px;background:var(--soft);border-radius:4px;overflow:hidden}
+.fill{height:100%;border-radius:4px;transition:width .25s}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.note{font-size:13px;padding:10px 12px;border-radius:8px;background:var(--warn-bg);color:var(--warn)}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--soft);vertical-align:top}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12.5px;white-space:nowrap;font-weight:500}
+.diff{color:var(--muted);font-size:12.5px}
+.heat{--vfg:var(--c-heat);--vbg:var(--c-heat-bg)}
+.pox{--vfg:var(--c-pox);--vbg:var(--c-pox-bg)}
+.hfmd{--vfg:var(--c-hfmd);--vbg:var(--c-hfmd-bg)}
+.pill.heat,.pill.pox,.pill.hfmd{color:var(--vfg);background:var(--vbg)}
+.dot.heat,.dot.pox,.dot.hfmd{background:var(--vfg)}
+.fill.heat,.fill.pox,.fill.hfmd{background:var(--vfg)}
+.score{display:flex;gap:20px;flex-wrap:wrap;align-items:baseline}
+.score .big{font-family:var(--f-display);font-size:30px;font-weight:700}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--c-pox);font-weight:600}
+details{font-size:14px;color:var(--muted)}
+summary{cursor:pointer;color:var(--ink);font-weight:500}
+details p{margin:8px 0 0;max-width:72ch}
+footer{font-size:12.5px;color:var(--muted)}
+
+/* UI/UX pass: plainer Thai copy, step order, larger touch targets, calmer notice */
+.step{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--accent);letter-spacing:.02em}
+.step b{display:inline-grid;place-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:12px}
+.panel-title{display:grid;gap:4px}
+.hint{margin:0;color:var(--muted);font-size:14px}
+.feat{min-height:46px;font-size:15px;line-height:1.45}
+.count{font-size:13px;color:var(--muted)}
+.count strong{color:var(--ink)}
+.verdict .vote-line{font-size:14px;color:var(--ink)}
+.verdict .vote-line strong{font-variant-numeric:tabular-nums}
+.dots-help{font-size:12.5px;color:var(--muted)}
+.info{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.55;padding:12px 14px;border-radius:8px;background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+.info .i{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--muted);color:var(--muted);display:grid;place-content:center;font-size:12px;font-weight:600;font-family:var(--f-display);margin-top:1px}
+.nb-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.nb{display:grid;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:8px}
+.nb-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nb-id{font-weight:600}
+.nb-d{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+.nb-detail{font-size:13px;color:var(--muted)}
+.sub{margin:0;font-size:13px;color:var(--muted)}
+.acc-card{display:grid;gap:2px;padding:14px 18px;border-radius:10px;background:var(--soft);min-width:200px}
+.acc-card .k{font-size:13px;color:var(--muted)}
+.acc-card .v{font-family:var(--f-display);font-weight:700;font-size:34px;line-height:1.1;color:var(--ok)}
+.acc-card .n{font-size:14px;font-weight:500}
+.acc-row{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.acc-note{margin:0;font-size:13px;color:var(--muted);max-width:48ch}
+@media (max-width:520px){
+  .panel{padding:16px}
+  .acc-card{min-width:0;width:100%}
+  .nb-d{margin-left:0;width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ระบบจำแนกผื่นผิวหนังเบื้องต้น</h1>
+    <p class="lede">เลือกลักษณะของผื่นที่สังเกตเห็น ระบบจะนำไปเปรียบเทียบกับรูปตัวอย่างที่ทราบคำตอบแล้ว 36 รูป และแสดงว่าผื่นมีลักษณะใกล้เคียงกับผื่นชนิดใดมากที่สุด ระหว่างผดผื่นร้อน ผื่นอีสุกอีใส และผื่นโรคมือเท้าปาก</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="in-h">
+      <div class="panel-head">
+        <div class="panel-title">
+          <span class="step"><b>1</b>เลือกลักษณะผื่น</span>
+          <h2 id="in-h">🔍 ลักษณะผื่นที่พบ</h2>
+          <p class="hint">กรุณาเลือกลักษณะที่ตรงกับผื่นมากที่สุด (สามารถเลือกได้หลายข้อ)</p>
+        </div>
+      </div>
+      <div class="panel-head">
+        <span class="count" id="count">เลือกแล้ว <strong>0</strong> ข้อ</span>
+        <button id="clear" type="button">ล้างการเลือก</button>
+      </div>
+      <div class="group"><h3>รูปร่างของตุ่ม</h3><div class="group" id="g-shape"></div></div>
+      <div class="group"><h3>ตำแหน่งที่พบ</h3><div class="group" id="g-place"></div></div>
+      <div class="group"><h3>การกระจายของผื่น</h3><div class="group" id="g-spread"></div></div>
+      <div class="group">
+        <h3>ลองใช้ข้อมูลตัวอย่าง</h3>
+        <p class="sub">ข้อมูลจากรูปในชุดทดสอบ ซึ่งระบบไม่เคยใช้เรียนรู้มาก่อน กดเพื่อกรอกลักษณะให้อัตโนมัติ</p>
+        <div class="btns" id="samples"></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="out-h" aria-live="polite">
+      <div class="panel-title">
+        <span class="step"><b>2</b>ดูผลลัพธ์</span>
+        <h2 id="out-h">ผลการประเมินเบื้องต้น</h2>
+      </div>
+      <div class="verdict" id="verdict">
+        <span class="label">ระบบจำแนกได้ว่า</span>
+        <span class="name" id="v-name">–</span>
+        <span class="vote-line" id="v-votes"></span>
+        <div class="votes" id="v-dots"></div>
+        <span class="dots-help">แต่ละวงกลมคือรูปตัวอย่างที่ใกล้เคียงที่สุด 1 รูป ตัวเลขในวงกลมคือจำนวนลักษณะที่ต่างกัน (0 = เหมือนกันทุกข้อ)</span>
+      </div>
+      <div class="info" role="note"><span class="i" aria-hidden="true">i</span><span><strong>หมายเหตุ:</strong> ผลลัพธ์นี้เป็นการจำแนกจากโมเดลเพื่อการศึกษา ไม่ใช่การวินิจฉัยโรค และไม่สามารถใช้แทนคำแนะนำจากแพทย์ได้</span></div>
+      <div class="note" id="warn" hidden></div>
+      <div class="group">
+        <h3>รูปตัวอย่างที่ใกล้เคียงที่สุด 5 รูป เป็นผื่นชนิดใดบ้าง</h3>
+        <div class="tally" id="tally"></div>
+      </div>
+      <div class="group">
+        <h3>5 รูปตัวอย่างที่ใกล้เคียงที่สุด (5 Nearest Neighbors)</h3>
+        <ul class="nb-list" id="nb"></ul>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="t-h">
+    <div class="panel-title">
+      <h2 id="t-h">ผลการทดสอบความถูกต้องของระบบ</h2>
+    </div>
+    <div class="acc-row">
+      <div class="acc-card">
+        <span class="k">ความถูกต้องในการทดสอบ (Accuracy)</span>
+        <span class="v mono" id="acc">–</span>
+        <span class="n" id="acc-sub"></span>
+      </div>
+      <p class="acc-note" id="acc-note"></p>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>รูป</th><th>ชนิดผื่นจริง</th><th>ผลที่ระบบจำแนก</th><th>คะแนนโหวต</th><th>ผล</th><th></th></tr></thead>
+      <tbody id="tt"></tbody>
+    </table></div>
+  </section>
+
+  <footer>เว็บไซต์นี้จัดทำขึ้นเพื่อการศึกษาด้านการเรียนรู้ของเครื่อง (Machine Learning) เท่านั้น มิใช่เครื่องมือสำหรับวินิจฉัยโรค หากพบผื่นที่มีลักษณะผิดปกติ ควรเข้ารับการตรวจและปรึกษาแพทย์</footer>
+</div>
+<script>
+const M = {"features":["ตุ่มเล็กมาก","ตุ่มน้ำบนฐานสีแดง","ตุ่มน้ำใสบางมาก ไม่มีรอยแดงรอบ","ตุ่มน้ำขุ่นหรือเป็นหนอง","ตุ่มบุ๋มตรงกลาง","ตุ่มแห้งตกสะเก็ด","ตุ่ม/ผื่นที่ฝ่ามือหรือฝ่าเท้า","แผลหรือตุ่มในปาก (ลิ้น กระพุ้งแก้ม)","ตุ่มน้ำรูปวงรี สีขาวเทา มีขอบแดง","ผื่นหลายระยะในรูปเดียว","ตุ่มขึ้นหนาแน่นชิดกันเป็นปื้น"],"train":[{"id":38,"x":[0,0,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":7,"x":[0,1,0,0,1,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":37,"x":[0,0,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":18,"x":[0,0,0,0,1,1,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":15,"x":[1,0,1,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":17,"x":[1,0,0,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":10,"x":[1,0,0,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":35,"x":[0,0,0,0,0,0,0,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":19,"x":[1,0,1,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":23,"x":[0,1,0,0,0,1,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":14,"x":[0,0,0,0,0,1,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":24,"x":[0,1,0,1,1,1,0,0,0,0,0],"y":"ผื่นอีสุกอีใส"},{"id":11,"x":[0,1,0,0,0,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":34,"x":[0,0,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":20,"x":[0,0,1,0,0,0,0,0,0,0,1],"y":"ผดผื่นร้อน"},{"id":44,"x":[0,1,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":2,"x":[1,0,0,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":4,"x":[0,1,0,0,0,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":3,"x":[0,0,0,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":21,"x":[1,0,0,1,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":45,"x":[0,1,0,0,0,0,0,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":1,"x":[0,1,0,0,0,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":6,"x":[0,1,0,0,0,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":22,"x":[1,0,0,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":39,"x":[0,0,0,1,0,0,0,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":31,"x":[0,0,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":43,"x":[0,0,1,0,0,0,1,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":33,"x":[0,0,0,0,0,0,0,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":25,"x":[0,1,1,1,1,1,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":41,"x":[0,0,0,0,0,0,0,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":32,"x":[0,0,0,0,0,0,0,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":28,"x":[1,0,0,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":12,"x":[0,0,0,0,1,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":30,"x":[0,0,1,0,0,0,0,0,0,0,1],"y":"ผดผื่นร้อน"},{"id":26,"x":[0,1,0,1,0,1,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":8,"x":[0,0,1,0,0,0,0,0,0,0,1],"y":"ผดผื่นร้อน"}],"test":[{"id":29,"x":[0,1,0,1,0,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":16,"x":[1,0,1,0,0,0,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":40,"x":[0,0,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":27,"x":[1,0,0,0,0,1,0,0,0,0,0],"y":"ผดผื่นร้อน"},{"id":36,"x":[0,0,0,0,0,0,1,1,0,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":5,"x":[0,1,0,1,0,1,0,0,0,0,0],"y":"ผื่นอีสุกอีใส"},{"id":13,"x":[0,1,0,1,0,0,0,0,0,1,0],"y":"ผื่นอีสุกอีใส"},{"id":42,"x":[0,1,0,0,0,0,1,0,1,0,0],"y":"ผื่นโรคมือเท้าปาก"},{"id":9,"x":[0,0,0,0,0,0,0,0,0,0,1],"y":"ผดผื่นร้อน"}]};
+const K = 5;
+const CLS = {"ผดผื่นร้อน":"heat","ผื่นอีสุกอีใส":"pox","ผื่นโรคมือเท้าปาก":"hfmd"};
+const SHORT = {"ผดผื่นร้อน":"ผด","ผื่นอีสุกอีใส":"อีสุกฯ","ผื่นโรคมือเท้าปาก":"มือเท้าปาก"};
+const GROUPS = {"g-shape":[0,1,2,3,4,5,8],"g-place":[6,7],"g-spread":[9,10]};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+for (const [gid, idxs] of Object.entries(GROUPS)) {
+  $(gid).innerHTML = idxs.map(i => `<label class="feat" for="f${i}"><input type="checkbox" id="f${i}" data-i="${i}"><span>${esc(M.features[i])}</span></label>`).join("");
+}
+const boxes = [...document.querySelectorAll('input[data-i]')].sort((a,b)=>a.dataset.i-b.dataset.i);
+const getX = () => boxes.map(b => b.checked ? 1 : 0);
+const setX = x => boxes.forEach((b,i) => b.checked = !!x[i]);
+
+function predict(x){
+  const ranked = M.train.map((r,k)=>({r,k,d:r.x.reduce((s,v,i)=>s+(v!==x[i]),0)}))
+    .sort((a,b)=>a.d-b.d || a.k-b.k).slice(0,K);
+  const v = {};
+  for (const n of ranked){ v[n.r.y] ??= {c:0,s:0}; v[n.r.y].c++; v[n.r.y].s += n.d; }
+  const top = Math.max(...Object.values(v).map(o=>o.c));
+  let cand = Object.keys(v).filter(c=>v[c].c===top).sort((a,b)=>v[a].s-v[b].s);
+  let label = cand[0];
+  if (cand.length>1 && v[cand[0]].s===v[cand[1]].s) {
+    const tied = cand.filter(c=>v[c].s===v[cand[0]].s);
+    label = ranked.find(n=>tied.includes(n.r.y)).r.y;
+  }
+  return {label, votes:v, top, ranked};
+}
+
+function render(){
+  const x = getX();
+  const p = predict(x);
+  const cls = CLS[p.label];
+  const picked = x.reduce((a,b)=>a+b,0);
+  $("count").innerHTML = `เลือกแล้ว <strong>${picked}</strong> ข้อ`;
+  $("verdict").className = "verdict " + cls;
+  $("v-name").textContent = p.label;
+  $("v-votes").innerHTML = `ผลจากเพื่อนบ้านที่ใกล้เคียงที่สุด: <strong>${p.top}/${K}</strong>`;
+  $("v-dots").innerHTML = p.ranked.map(n=>`<span class="dot ${CLS[n.r.y]}" title="รูปที่ ${n.r.id}: ${esc(n.r.y)} (ต่างกัน ${n.d} ข้อ)">${n.d}</span>`).join("");
+  $("tally").innerHTML = Object.keys(CLS).map(c=>{
+    const n = p.votes[c]?.c || 0;
+    return `<div class="bar"><span>${esc(c)}</span><div class="track"><div class="fill ${CLS[c]}" style="width:${n/K*100}%"></div></div><span class="mono">${n}/${K}</span></div>`;
+  }).join("");
+  const warns = [];
+  if (x.every(v=>v===0)) warns.push("ยังไม่ได้เลือกลักษณะผื่น กรุณาเลือกลักษณะที่สังเกตเห็นอย่างน้อย 1 ข้อ เพื่อให้ผลการจำแนกมีความหมาย");
+  else if (p.ranked[0].d >= 3) warns.push(`รูปตัวอย่างที่ใกล้เคียงที่สุดยังต่างกันถึง ${p.ranked[0].d} ลักษณะ ลักษณะที่เลือกไม่ค่อยตรงกับรูปตัวอย่างในระบบ ผลการจำแนกอาจคลาดเคลื่อน`);
+  if (p.top <= 2) warns.push("คะแนนโหวตค่อนข้างใกล้เคียงกัน ระบบจึงยังไม่สามารถจำแนกได้อย่างชัดเจน");
+  $("warn").hidden = !warns.length; $("warn").textContent = warns.join(" ");
+  $("nb").innerHTML = p.ranked.map(n=>{
+    const extra = n.r.x.map((v,i)=>v && !x[i] ? M.features[i] : null).filter(Boolean);
+    const miss  = n.r.x.map((v,i)=>!v && x[i] ? M.features[i] : null).filter(Boolean);
+    const parts = [];
+    if (extra.length) parts.push(`รูปนี้มีเพิ่ม: ${esc(extra.join(", "))}`);
+    if (miss.length)  parts.push(`รูปนี้ไม่มี: ${esc(miss.join(", "))}`);
+    const detail = parts.length ? parts.join("<br>") : "ลักษณะตรงกับที่เลือกทุกข้อ";
+    return `<li class="nb"><div class="nb-top"><span class="nb-id">รูปที่ ${n.r.id}</span><span class="pill ${CLS[n.r.y]}">${esc(n.r.y)}</span><span class="nb-d">${n.d===0?"เหมือนกันทุกข้อ":`ต่างกัน ${n.d} ข้อ`}</span></div><div class="nb-detail">${detail}</div></li>`;
+  }).join("");
+}
+
+$("samples").innerHTML = M.test.map((r,i)=>`<button type="button" data-t="${i}" class="pill-btn">ตัวอย่างรูปที่ ${r.id}</button>`).join("");
+$("samples").addEventListener("click", e=>{ const b=e.target.closest("button[data-t]"); if(!b) return; setX(M.test[b.dataset.t].x); render(); });
+$("clear").addEventListener("click", ()=>{ setX(Array(11).fill(0)); render(); });
+boxes.forEach(b=>b.addEventListener("change", render));
+
+let correct = 0;
+$("tt").innerHTML = M.test.map((r,i)=>{
+  const p = predict(r.x); const ok = p.label===r.y; correct += ok;
+  return `<tr><td class="mono">รูปที่ ${r.id}</td><td><span class="pill ${CLS[r.y]}">${esc(r.y)}</span></td><td><span class="pill ${CLS[p.label]}">${esc(p.label)}</span></td><td class="mono">${p.top}/${K}</td><td class="${ok?"ok":"bad"}">${ok?"ถูกต้อง":"ไม่ถูกต้อง"}</td><td><button type="button" data-load="${i}">ดูรายละเอียด</button></td></tr>`;
+}).join("");
+$("acc").textContent = Math.round(correct/M.test.length*100) + "%";
+$("acc-sub").textContent = `ถูกต้อง ${correct}/${M.test.length} รูป`;
+$("acc-note").textContent = `ผลการทดสอบจากชุดข้อมูล Test Set จำนวน ${M.test.length} รูปเท่านั้น ตัวเลขนี้ไม่ได้รับรองว่าระบบจะจำแนกผื่นได้ถูกต้อง ${Math.round(correct/M.test.length*100)}% ในทุกกรณี`;
+$("tt").addEventListener("click", e=>{ const b=e.target.closest("button[data-load]"); if(!b) return; setX(M.test[b.dataset.load].x); render(); window.scrollTo({top:0,behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"}); });
+
+setX(M.test[0].x); render();
+</script>
+
+</body>
+</html>
